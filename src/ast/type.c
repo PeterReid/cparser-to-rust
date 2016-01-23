@@ -411,6 +411,7 @@ static void print_function_type_post(const function_type_t *type,
 	intern_print_type_post(type->return_type);
 }
 
+
 /**
  * Prints the prefix part of a pointer type.
  *
@@ -419,11 +420,13 @@ static void print_function_type_post(const function_type_t *type,
 static void print_pointer_type_pre(const pointer_type_t *type)
 {
 	type_t const *const points_to = type->points_to;
+	
+	if (type->base.qualifiers & TYPE_QUALIFIER_CONST) {
+		print_string("*const ");
+	} else {
+		print_string("*mut ");
+	}
 	intern_print_type_pre(points_to);
-	if (points_to->kind == TYPE_ARRAY || points_to->kind == TYPE_FUNCTION)
-		print_string(" (");
-	print_char('*');
-	print_type_qualifiers(type->base.qualifiers, QUAL_SEP_START);
 }
 
 /**
@@ -633,7 +636,7 @@ static void intern_print_type_pre(const type_t *const type)
 	case TYPE_ARRAY:           print_array_type_pre(          &type->array);     return;
 	case TYPE_ATOMIC:          print_atomic_type(             &type->atomic);    return;
 	case TYPE_COMPLEX:         print_complex_type(            &type->atomic);    return;
-	case TYPE_COMPOUND_STRUCT: print_compound_type("struct ", &type->compound);  return;
+	case TYPE_COMPOUND_STRUCT: print_compound_type("", &type->compound);  return;
 	case TYPE_COMPOUND_UNION:  print_compound_type("union ",  &type->compound);  return;
 	case TYPE_ENUM:            print_type_enum(               &type->enumt);     return;
 	case TYPE_ERROR:           print_string("<error>");                          return;

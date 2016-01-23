@@ -585,7 +585,6 @@ static void print_va_copy(const va_copy_expression_t *expression)
  */
 static void print_select(const select_expression_t *expression)
 {
-	print_expression_prec(expression->compound, PREC_POSTFIX);
 	/* do not print anything for anonymous struct/union selects
 	 * FIXME: if the anonymous select was a '->' this will print '.'
 	 */
@@ -593,11 +592,15 @@ static void print_select(const select_expression_t *expression)
 		return;
 
 	if (is_type_pointer(skip_typeref(expression->compound->base.type))) {
-		print_string("->");
+		print_string("(*");
+		print_expression(expression->compound);
+		print_string(").");
+		print_string(expression->compound_entry->base.symbol->string);
 	} else {
+		print_expression_prec(expression->compound, PREC_POSTFIX);
 		print_char('.');
+		print_string(expression->compound_entry->base.symbol->string);
 	}
-	print_string(expression->compound_entry->base.symbol->string);
 }
 
 /**
@@ -1311,8 +1314,8 @@ static void print_declaration(entity_t const *const entity)
 	assert(is_declaration(entity));
 	const declaration_t *declaration = &entity->declaration;
 
-	print_storage_class(declaration->declared_storage_class);
 	if (entity->kind == ENTITY_FUNCTION) {
+		print_storage_class(declaration->declared_storage_class);
 		function_t *function = (function_t*)declaration;
 		if (function->is_inline) {
 			if (declaration->modifiers & DM_FORCEINLINE) {
@@ -1327,7 +1330,7 @@ static void print_declaration(entity_t const *const entity)
 	//print_ms_modifiers(declaration);
 	switch (entity->kind) {
 		case ENTITY_FUNCTION:
-			print_string("fn ");
+			print_string("unsafe fn ");
 			print_string(entity->base.symbol->string);
 			print_function_signature(entity->declaration.type, &entity->function.parameters);
 //			print_type_ext(entity->declaration.type, entity->base.symbol,
