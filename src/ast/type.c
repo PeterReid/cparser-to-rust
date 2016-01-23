@@ -250,6 +250,9 @@ const char *get_atomic_kind_name(atomic_type_kind_t kind)
 static void print_atomic_kinds(atomic_type_kind_t kind)
 {
 	const char *s = get_atomic_kind_name(kind);
+	if (strcmp(s, "int")==0) s = "c_int";
+	else if (strcmp(s, "char")==0) s = "c_char";
+	else if (strcmp(s, "long")==0) s = "c_long";
 	print_string(s);
 }
 
@@ -546,7 +549,7 @@ void print_compound_definition(const compound_t *compound)
 
 		print_indent();
 		print_entity(entity);
-		print_char('\n');
+		print_string(",\n");
 	}
 
 	change_indent(-1);
@@ -689,16 +692,45 @@ void print_type(const type_t *const type)
 void print_type_ext(const type_t *const type, const symbol_t *symbol,
                     const scope_t *parameters)
 {
-	intern_print_type_pre(type);
 	if (symbol != NULL) {
-		print_char(' ');
 		print_string(symbol->string);
+		print_string(": ");
 	}
+	intern_print_type_pre(type);
 	if (type->kind == TYPE_FUNCTION) {
 		print_function_type_post(&type->function, parameters);
 	} else {
 		intern_print_type_post(type);
 	}
+}
+
+void print_function_signature(const type_t *const type, const scope_t *parameters)
+{
+	separator_t sep = { "", ", " };
+
+	print_char('(');
+	
+	for (entity_t const *parameter = parameters->first_entity;
+	     parameter != NULL; parameter = parameter->base.next) {
+		if (parameter->kind != ENTITY_PARAMETER)
+			continue;
+
+		print_string(sep_next(&sep));
+		const type_t *const param_type = parameter->declaration.type;
+		if (param_type == NULL) {
+			//print_string(parameter->base.symbol->string);
+			print_string("TODO: NULL param_type");
+		} else {
+			print_string("mut ");
+			print_type_ext(param_type, parameter->base.symbol, NULL);
+		}
+	}
+	print_char(')');
+
+	if (type->function.return_type) {
+		print_string(" -> ");
+		print_type(type->function.return_type);
+	}	
 }
 
 type_t *duplicate_type(const type_t *type)

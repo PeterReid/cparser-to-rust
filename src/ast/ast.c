@@ -47,7 +47,7 @@ struct obstack ast_obstack;
 static int indent;
 static int case_indent;
 
-bool print_implicit_casts = false;
+bool print_implicit_casts = true;
 bool print_parenthesis = false;
 
 static void print_statement(const statement_t *statement);
@@ -312,9 +312,9 @@ static void print_binary_expression(const binary_expression_t *binexpr)
 	switch (binexpr->base.kind) {
 	case EXPR_BINARY_COMMA:              op = ", ";    break;
 	case EXPR_BINARY_ASSIGN:             op = " = ";   break;
-	case EXPR_BINARY_ADD:                op = " + ";   break;
-	case EXPR_BINARY_SUB:                op = " - ";   break;
-	case EXPR_BINARY_MUL:                op = " * ";   break;
+	case EXPR_BINARY_ADD:                op = ".wrapping_add(";   break;
+	case EXPR_BINARY_SUB:                op = ".wrapping_sub(";   break;
+	case EXPR_BINARY_MUL:                op = ".wrapping_mul(";   break;
 	case EXPR_BINARY_MOD:                op = " % ";   break;
 	case EXPR_BINARY_DIV:                op = " / ";   break;
 	case EXPR_BINARY_BITWISE_OR:         op = " | ";   break;
@@ -345,6 +345,9 @@ static void print_binary_expression(const binary_expression_t *binexpr)
 	}
 	print_string(op);
 	print_expression_prec(binexpr->right, prec + 1 - r2l);
+	if (strchr(op, '(')) {
+		print_char(')');
+	}
 }
 
 /**
@@ -360,8 +363,16 @@ static void print_unary_expression(const unary_expression_t *unexpr)
 	case EXPR_UNARY_PLUS:             print_char  ('+' );         break;
 	case EXPR_UNARY_NOT:              print_char  ('!' );         break;
 	case EXPR_UNARY_COMPLEMENT:       print_char  ('~' );         break;
-	case EXPR_UNARY_PREFIX_INCREMENT: print_string("++");         break;
-	case EXPR_UNARY_PREFIX_DECREMENT: print_string("--");         break;
+	case EXPR_UNARY_PREFIX_INCREMENT:
+		print_string("transpiler::prefix_increment(&mut ");
+		print_expression_prec(unexpr->value, prec);
+		print_char(')');
+		return;
+	case EXPR_UNARY_PREFIX_DECREMENT:
+		print_string("transpiler::prefix_decrement(&mut ");
+		print_expression_prec(unexpr->value, prec);
+		print_char(')');
+		return;
 	case EXPR_UNARY_DEREFERENCE:      print_char  ('*' );         break;
 	case EXPR_UNARY_TAKE_ADDRESS:     print_char  ('&' );         break;
 	case EXPR_UNARY_DELETE:           print_string("delete ");    break;
@@ -370,18 +381,22 @@ static void print_unary_expression(const unary_expression_t *unexpr)
 	case EXPR_UNARY_IMAG:             print_string("__imag__ ");  break;
 
 	case EXPR_UNARY_POSTFIX_INCREMENT:
+		print_string("transpiler::postfix_increment(&mut ");
 		print_expression_prec(unexpr->value, prec);
-		print_string("++");
+		print_char(')');
 		return;
 	case EXPR_UNARY_POSTFIX_DECREMENT:
-		print_expression_prec(unexpr->value, prec);
-		print_string("--");
+		print_string("transpiler::postfix_decrement(&mut ");
+		print_expression(unexpr->value);
+		print_char(')');
 		return;
 	case EXPR_UNARY_CAST:
 		print_char('(');
+		print_expression_prec(unexpr->value, prec);
+		print_string(" as ");
 		print_type(unexpr->base.type);
 		print_char(')');
-		break;
+		return;
 	case EXPR_UNARY_ASSUME:
 		print_string("__assume(");
 		print_assignment_expression(unexpr->value);
@@ -497,16 +512,28 @@ static void print_builtin_types_compatible(
  */
 static void print_conditional(const conditional_expression_t *expression)
 {
+	print_string("if ");
 	print_expression_prec(expression->condition, PREC_LOGICAL_OR);
+	print_string(" { ");
 	if (expression->true_expression != NULL) {
-		print_string(" ? ");
-		print_expression_prec(expression->true_expression, PREC_EXPRESSION);
-		print_string(" : ");
+		print_char('\n');
+		++indent;
+		print_indent();
+		print_expression(expression->true_expression);
+		--indent;
+		print_char('\n');
+		print_indent();
+		print_string("} else {\n");
 	} else {
 		print_string(" ?: ");
 	}
-	precedence_t prec = dialect.cpp ? PREC_ASSIGNMENT : PREC_CONDITIONAL;
-	print_expression_prec(expression->false_expression, prec);
+	++indent;
+	print_indent();
+	print_expression(expression->false_expression);
+	--indent;
+	print_char('\n');
+	print_indent();
+	print_char('}');
 }
 
 /**
@@ -938,7 +965,9 @@ static void print_declaration_statement(
 			first = false;
 		}
 
+		print_string("let mut ");
 		print_entity(entity);
+		print_char(';');
 	}
 }
 
@@ -1112,10 +1141,10 @@ void print_statement(statement_t const *const stmt)
 static void print_storage_class(storage_class_t storage_class)
 {
 	switch (storage_class) {
-	case STORAGE_CLASS_NONE:     return;
+	case STORAGE_CLASS_NONE:     print_string("pub "); return;
 	case STORAGE_CLASS_TYPEDEF:  print_string("typedef ");  return;
 	case STORAGE_CLASS_EXTERN:   print_string("extern ");   return;
-	case STORAGE_CLASS_STATIC:   print_string("static ");   return;
+	case STORAGE_CLASS_STATIC:   return;
 	case STORAGE_CLASS_AUTO:     print_string("auto ");     return;
 	case STORAGE_CLASS_REGISTER: print_string("register "); return;
 	}
@@ -1298,14 +1327,19 @@ static void print_declaration(entity_t const *const entity)
 	//print_ms_modifiers(declaration);
 	switch (entity->kind) {
 		case ENTITY_FUNCTION:
-			print_type_ext(entity->declaration.type, entity->base.symbol,
-					&entity->function.parameters);
+			print_string("fn ");
+			print_string(entity->base.symbol->string);
+			print_function_signature(entity->declaration.type, &entity->function.parameters);
+//			print_type_ext(entity->declaration.type, entity->base.symbol,
+//					&entity->function.parameters);
 
 			if (entity->function.body != NULL) {
 				print_char('\n');
 				print_indented_statement(entity->function.body);
 				print_char('\n');
 				return;
+			} else {
+				print_string("TODO: ENTITY_FUNCTION without body\n");
 			}
 			break;
 
@@ -1330,7 +1364,6 @@ static void print_declaration(entity_t const *const entity)
 			print_type_ext(declaration->type, declaration->base.symbol, NULL);
 			break;
 	}
-	print_char(';');
 }
 
 /**
@@ -1365,6 +1398,9 @@ void print_entity(const entity_t *entity)
 	case ENTITY_CLASS:
 	case ENTITY_STRUCT:
 	case ENTITY_UNION:
+                print_string("#[repr(C)]\n");
+	        print_indent();
+		print_string("pub ");
 		print_string(get_entity_kind_name(entity->kind));
 		print_char(' ');
 		print_string(entity->base.symbol->string);
@@ -1372,7 +1408,6 @@ void print_entity(const entity_t *entity)
 			print_char(' ');
 			print_compound_definition(&entity->compound);
 		}
-		print_char(';');
 		return;
 	case ENTITY_ENUM:
 		print_string("enum ");
@@ -1406,6 +1441,11 @@ void print_entity(const entity_t *entity)
  */
 void print_ast(const translation_unit_t *unit)
 {
+	print_string("use libc::c_int;\n");
+	print_string("use libc::c_char;\n");
+	print_string("use transpiler;\n");
+	print_string("\n");
+
 	for (entity_t const *entity = unit->scope.first_entity; entity != NULL;
 	     entity = entity->base.next) {
 		if (entity->kind == ENTITY_ENUM_VALUE)

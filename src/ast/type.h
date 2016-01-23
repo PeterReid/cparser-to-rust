@@ -93,6 +93,8 @@ void print_type(const type_t *type);
 void print_type_ext(const type_t *type, const symbol_t *symbol,
                     const scope_t *parameters);
 
+void print_function_signature(const type_t *const type, const scope_t *parameters);
+
 typedef enum QualifierSeparators {
 	QUAL_SEP_NONE  = 0,
 	QUAL_SEP_START = 1U << 0,
